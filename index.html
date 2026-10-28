@@ -1,0 +1,74 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overland 4x4</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #87ceeb;
+  font-family: Arial, sans-serif;
+}
+#hud {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  z-index: 5;
+  color: white;
+  background: #111b;
+  padding: 14px;
+  border-radius: 8px;
+  line-height: 1.7;
+}
+#message {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111b;
+  color: white;
+  padding: 12px 18px;
+  border-radius: 8px;
+  text-align: center;
+  width: max-content;
+  max-width: 95%;
+}
+</style>
+</head>
+<body>
+<div id="hud">
+  <strong>OVERLAND 4x4</strong><br>
+  Speed: <span id="speed">0</span> km/h<br>
+  Gear: <span id="gear">N</span><br>
+  <small>WASD / Arrow Keys to Drive</small>
+</div>
+<div id="message">
+  Explore the wilderness!<br>
+  W = Drive · S = Reverse · A/D = Steer · Space = Brake
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 70, 230);
+
+const camera = new THREE.PerspectiveCamera(
+  70, window.innerWidth / window.innerHeight, 0.1, 500
+);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = false;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x65734b, 2));
+
+const sun = new THREE.Directional
