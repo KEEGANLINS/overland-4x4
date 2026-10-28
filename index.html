@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,69 +6,413 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Overland 4x4</title>
 <style>
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  overflow: hidden;
-  background: #87ceeb;
-  font-family: Arial, sans-serif;
-}
-#hud {
-  position: fixed;
-  top: 15px;
-  left: 15px;
-  z-index: 5;
-  color: white;
-  background: #111b;
-  padding: 14px;
-  border-radius: 8px;
-  line-height: 1.7;
-}
-#message {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #111b;
-  color: white;
-  padding: 12px 18px;
-  border-radius: 8px;
-  text-align: center;
-  width: max-content;
-  max-width: 95%;
-}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#9cc9e8;font-family:Arial,sans-serif}
+#hud{position:fixed;top:12px;left:12px;z-index:2;color:white;background:rgba(0,0,0,.65);padding:12px 14px;border-radius:8px;line-height:1.6}
+#message{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);color:white;background:rgba(0,0,0,.65);padding:9px 13px;border-radius:8px;text-align:center}
+#error{display:none;position:fixed;inset:10px;z-index:10;color:white;background:#7b1717;padding:20px}
 </style>
 </head>
 <body>
-<div id="hud">
-  <strong>OVERLAND 4x4</strong><br>
-  Speed: <span id="speed">0</span> km/h<br>
-  Gear: <span id="gear">N</span><br>
-  <small>WASD / Arrow Keys to Drive</small>
-</div>
-<div id="message">
-  Explore the wilderness!<br>
-  W = Drive · S = Reverse · A/D = Steer · Space = Brake
-</div>
+<div id="hud"><b>OVERLAND 4x4</b><br>Speed: <span id="speed">0</span><br>Surface: <span id="surface">Trail</span><br>Airborne: <span id="air">No</span></div>
+<div id="message">WASD / Arrow keys: drive · Space: brake · R: reset</div>
+<div id="error"></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(() => {
+const errorBox=document.getElementById('error');
+if(!window.THREE){errorBox.style.display='block';errorBox.textContent='Three.js failed to load. Check your internet connection and reload.';return;}
 
-<script type="module">
-import * as THREE from
-'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x9cc9e8);
+scene.fog=new THREE.Fog(0x9cc9e8,100,300);
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 70, 230);
-
-const camera = new THREE.PerspectiveCamera(
-  70, window.innerWidth / window.innerHeight, 0.1, 500
-);
-
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-renderer.shadowMap.enabled = false;
+const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,600);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x65734b, 2));
+scene.add(new THREE.HemisphereLight(0xe5f3ff,0x58603b,2));
+const sun=new THREE.DirectionalLight(0xfff0d7,2.4);
+sun.position.set(-45,85,35);
+sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-100;sun.shadow.camera.right=100;
+sun.shadow.camera.top=100;sun.shadow.camera.bottom=-100;
+scene.add(sun);
 
-const sun = new THREE.Directional
+const worldSize=220;
+
+function terrainHeight(x,z){
+return 1.8*Math.sin(x*.045)*Math.cos(z*.038)
++1.1*Math.sin(z*.075+x*.018)
++.55*Math.cos(x*.11+z*.06);
+}
+
+function terrainNormal(x,z){
+const e=.35;
+const hx=(terrainHeight(x+e,z)-terrainHeight(x-e,z))/(2*e);
+const hz=(terrainHeight(x,z+e)-terrainHeight(x,z-e))/(2*e);
+return new THREE.Vector3(-hx,1,-hz).normalize();
+}
+
+const groundGeo=new THREE.PlaneGeometry(worldSize,worldSize,180,180);
+groundGeo.rotateX(-Math.PI/2);
+const pos=groundGeo.attributes.position;
+for(let i=0;i<pos.count;i++){
+const x=pos.getX(i),z=pos.getZ(i);
+pos.setY(i,terrainHeight(x,z));
+}
+groundGeo.computeVertexNormals();
+const ground=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({color:0x657b43,roughness:1}));
+ground.receiveShadow=true;
+scene.add(ground);
+
+// Dirt trail patches
+const trailMat=new THREE.MeshStandardMaterial({color:0x9b8865,roughness:1});
+for(let i=0;i<7;i++){
+const x=-75+i*24,z=Math.sin(i*.7)*10;
+const trail=new THREE.Mesh(new THREE.BoxGeometry(14,.08,5.5),trailMat);
+trail.position.set(x,terrainHeight(x,z)+.06,z);
+trail.rotation.y=-.12+i*.04;
+trail.receiveShadow=true;
+scene.add(trail);
+}
+
+const obstacles=[];
+const ramps=[];
+
+const barkMat=new THREE.MeshStandardMaterial({color:0x60432c});
+const leavesMat=new THREE.MeshStandardMaterial({color:0x2f572c});
+const rockMat=new THREE.MeshStandardMaterial({color:0x777c7b});
+
+function addTree(x,z,size=1){
+const y=terrainHeight(x,z);
+const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.25*size,.42*size,2.2*size,8),barkMat);
+trunk.position.set(x,y+1.1*size,z);
+trunk.castShadow=true;scene.add(trunk);
+const crown=new THREE.Mesh(new THREE.ConeGeometry(1.55*size,3.4*size,8),leavesMat);
+crown.position.set(x,y+3.2*size,z);
+crown.castShadow=true;scene.add(crown);
+obstacles.push({x,z,radius:1.15*size,type:'Tree'});
+}
+
+function addRock(x,z,size=1){
+const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(size,0),rockMat);
+rock.position.set(x,terrainHeight(x,z)+size*.55,z);
+rock.scale.set(1.2,.85,1);
+rock.rotation.set(.2,Math.random()*3,.1);
+rock.castShadow=true;rock.receiveShadow=true;
+scene.add(rock);
+obstacles.push({x,z,radius:size*1.1,type:'Rock'});
+}
+
+[
+[-35,-18,1.1],[-22,25,1.2],[-2,-28,1.1],[18,22,1.25],
+[38,-15,1],[55,35,1.1],[72,-28,1.2],[-60,45,1.3],
+[-72,-35,1.1],[5,55,1.1],[88,8,1.2],[-92,5,1.2],
+[45,62,1],[-48,-62,1.1]
+].forEach(v=>addTree(...v));
+
+[
+[-28,-5,1.5],[-8,18,1.4],[24,-30,1.7],[50,8,1.3],
+[68,45,1.5],[-62,20,1.6],[10,-58,1.4],[-82,-18,1.5],
+[88,-48,1.4],[35,45,1.3]
+].forEach(v=>addRock(...v));
+
+// Ramps
+function addRamp(x,z,angle,length=10,width=5,rise=2.4){
+const group=new THREE.Group();
+group.position.set(x,terrainHeight(x,z)+.05,z);
+group.rotation.y=angle;
+
+const geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array([
+-width/2,0,-length/2,
+ width/2,0,-length/2,
+-width/2,rise,length/2,
+ width/2,rise,length/2
+]),3));
+geo.setIndex([0,2,1,1,2,3]);
+geo.computeVertexNormals();
+
+const surface=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({
+color:0xb77a42,roughness:.9,side:THREE.DoubleSide
+}));
+surface.castShadow=true;surface.receiveShadow=true;
+group.add(surface);
+
+const railMat=new THREE.MeshStandardMaterial({color:0x704523});
+for(const side of [-1,1]){
+const rail=new THREE.Mesh(new THREE.BoxGeometry(.22,.32,length),railMat);
+rail.position.set(side*(width/2+.06),rise*.48,0);
+rail.rotation.x=-Math.atan2(rise,length);
+rail.castShadow=true;group.add(rail);
+}
+scene.add(group);
+ramps.push({x,z,angle,length,width,rise});
+}
+
+[
+[-48,-38,.15,11,5,2.8],[-12,-8,-.25,10,5,2.4],
+[18,5,.3,12,5.5,3.2],[42,-42,-.2,11,5,2.7],
+[64,20,.45,10,5,2.5],[-70,12,-.3,12,5.5,3.1],
+[5,48,.1,11,5,2.6],[-38,55,.5,10,5,2.4]
+].forEach(v=>addRamp(...v));
+
+// Truck
+const car=new THREE.Group();
+const bodyPivot=new THREE.Group();
+car.add(bodyPivot);
+scene.add(car);
+
+const paint=new THREE.MeshStandardMaterial({color:0x2458a6,metalness:.28,roughness:.45});
+const darkPaint=new THREE.MeshStandardMaterial({color:0x17222b,metalness:.25,roughness:.55});
+const glass=new THREE.MeshStandardMaterial({color:0x8fc5d8,metalness:.2,roughness:.18,transparent:true,opacity:.78});
+const rubber=new THREE.MeshStandardMaterial({color:0x17191a,roughness:.95});
+const treadMat=new THREE.MeshStandardMaterial({color:0x2b2c2c});
+const rimMat=new THREE.MeshStandardMaterial({color:0xc2c9cc,metalness:.75,roughness:.28});
+const lightMat=new THREE.MeshStandardMaterial({color:0xfff2bd,emissive:0xffd56a,emissiveIntensity:1.1});
+const redLightMat=new THREE.MeshStandardMaterial({color:0xa51f18,emissive:0x5a0804});
+
+function box(parent,w,h,d,mat,x,y,z){
+const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;
+parent.add(m);return m;
+}
+
+// Front of truck faces local -Z
+box(bodyPivot,2.25,.62,4.15,paint,0,.98,0);
+box(bodyPivot,2.05,.65,1.75,paint,0,1.55,-.65);
+box(bodyPivot,1.82,.62,1.48,glass,0,1.61,-.72);
+box(bodyPivot,2,.12,1.72,darkPaint,0,1.98,-.66);
+box(bodyPivot,1.85,.12,1.7,paint,0,1.22,1.05);
+
+for(const side of [-1,1]){
+box(bodyPivot,.07,.5,.66,darkPaint,side*1.03,1.58,-.76);
+box(bodyPivot,.07,.5,.62,darkPaint,side*1.03,1.58,-.05);
+box(bodyPivot,.12,.27,.16,darkPaint,side*1.17,1.42,-1.02);
+const mirror=new THREE.Mesh(new THREE.BoxGeometry(.22,.16,.22),darkPaint);
+mirror.position.set(side*1.27,1.54,-1);
+bodyPivot.add(mirror);
+}
+
+box(bodyPivot,.95,.36,.08,darkPaint,0,.98,-2.11);
+for(let i=0;i<5;i++)box(bodyPivot,.08,.28,.04,rimMat,-.32+i*.16,.98,-2.16);
+box(bodyPivot,2.35,.2,.22,darkPaint,0,.61,-2.13);
+box(bodyPivot,2.35,.2,.22,darkPaint,0,.61,2.13);
+
+for(const side of [-1,1]){
+box(bodyPivot,.34,.22,.08,lightMat,side*.82,1.13,-2.12);
+box(bodyPivot,.25,.2,.08,redLightMat,side*.88,1.08,2.12);
+box(bodyPivot,.12,.12,.65,darkPaint,side*1.12,.86,.9);
+}
+
+const spare=new THREE.Mesh(new THREE.TorusGeometry(.43,.16,10,18),rubber);
+spare.position.set(0,1.35,2.12);bodyPivot.add(spare);
+const spareHub=new THREE.Mesh(new THREE.CylinderGeometry(.22,.22,.12,16),rimMat);
+spareHub.rotation.x=Math.PI/2;
+spareHub.position.set(0,1.35,2.28);bodyPivot.add(spareHub);
+
+const wheels=[];
+function makeWheel(x,z){
+const wheel=new THREE.Group();
+wheel.position.set(x,.58,z);
+bodyPivot.add(wheel);
+
+const tire=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,.38,20),rubber);
+tire.rotation.z=Math.PI/2;tire.castShadow=true;wheel.add(tire);
+
+const rim=new THREE.Mesh(new THREE.CylinderGeometry(.32,.32,.405,16),rimMat);
+rim.rotation.z=Math.PI/2;wheel.add(rim);
+
+const hub=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,.43,12),darkPaint);
+hub.rotation.z=Math.PI/2;wheel.add(hub);
+
+for(let i=0;i<18;i++){
+const a=i*Math.PI*2/18;
+const tread=new THREE.Mesh(new THREE.BoxGeometry(.43,.12,.16),treadMat);
+tread.position.set(0,Math.sin(a)*.535,Math.cos(a)*.535);
+tread.rotation.x=a;tread.castShadow=true;wheel.add(tread);
+}
+
+for(const face of [-1,1]){
+for(let i=0;i<6;i++){
+const a=i*Math.PI/3;
+const spoke=new THREE.Mesh(new THREE.BoxGeometry(.055,.23,.055),darkPaint);
+spoke.position.set(face*.215,Math.sin(a)*.2,Math.cos(a)*.2);
+spoke.rotation.x=-a;wheel.add(spoke);
+const lug=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),darkPaint);
+lug.position.set(face*.23,Math.sin(a)*.14,Math.cos(a)*.14);
+wheel.add(lug);
+}
+}
+wheels.push(wheel);
+}
+makeWheel(-1.12,-1.35);makeWheel(1.12,-1.35);
+makeWheel(-1.12,1.35);makeWheel(1.12,1.35);
+
+// Driving controls
+const keys={};
+addEventListener('keydown',e=>{
+keys[e.key.toLowerCase()]=true;
+if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();
+if(e.key.toLowerCase()==='r')resetCar();
+});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+
+let heading=0,speed=0,verticalVelocity=0,airborne=false;
+let wheelSpin=0;
+const worldUp=new THREE.Vector3(0,1,0);
+const upSmooth=new THREE.Vector3(0,1,0);
+const desiredUp=new THREE.Vector3(0,1,0);
+const tempForward=new THREE.Vector3();
+const tempRight=new THREE.Vector3();
+const basis=new THREE.Matrix4();
+const targetQuaternion=new THREE.Quaternion();
+const forward=new THREE.Vector3();
+let lastSurface='Trail';
+
+function resetCar(){
+car.position.set(0,terrainHeight(0,0)+.8,0);
+heading=0;speed=0;verticalVelocity=0;airborne=false;
+upSmooth.copy(terrainNormal(0,0));
+bodyPivot.position.y=0;
+car.quaternion.identity();
+}
+resetCar();
+
+function rampAtCar(){
+for(const r of ramps){
+const dx=car.position.x-r.x,dz=car.position.z-r.z;
+const c=Math.cos(r.angle),s=Math.sin(r.angle);
+const lx=dx*c-dz*s,lz=dx*s+dz*c;
+if(Math.abs(lx)<r.width*.52&&lz>-r.length/2&&lz<r.length/2){
+return {r,progress:(lz+r.length/2)/r.length,lz};
+}
+}
+return null;
+}
+
+const clock=new THREE.Clock();
+
+function animate(){
+requestAnimationFrame(animate);
+const dt=Math.min(clock.getDelta(),.04);
+
+const throttle=keys.w||keys.arrowup;
+const reverse=keys.s||keys.arrowdown;
+const steer=(keys.a||keys.arrowleft?-1:0)+(keys.d||keys.arrowright?1:0);
+const braking=keys[' '];
+
+if(throttle)speed+=10.5*dt;
+if(reverse)speed-=8*dt;
+if(!throttle&&!reverse)speed*=Math.pow(.985,dt*60);
+if(braking)speed*=Math.pow(.88,dt*60);
+speed=THREE.MathUtils.clamp(speed,-10,22);
+heading+=steer*(.95+Math.min(Math.abs(speed)/12,1.1))*dt*(speed<0?-1:1);
+
+forward.set(-Math.sin(heading),0,-Math.cos(heading));
+car.position.x+=forward.x*speed*dt;
+car.position.z+=forward.z*speed*dt;
+
+const edge=worldSize/2-4;
+car.position.x=THREE.MathUtils.clamp(car.position.x,-edge,edge);
+car.position.z=THREE.MathUtils.clamp(car.position.z,-edge,edge);
+
+lastSurface='Trail';
+
+// Collisions with trees and rocks
+for(const o of obstacles){
+const dx=car.position.x-o.x,dz=car.position.z-o.z;
+const d=Math.hypot(dx,dz),minD=o.radius+1.25;
+if(d<minD){
+const nx=d>.001?dx/d:1,nz=d>.001?dz/d:0;
+car.position.x=o.x+nx*minD;
+car.position.z=o.z+nz*minD;
+speed*=-.22;
+lastSurface=o.type;
+}
+}
+
+const ramp=rampAtCar();
+const groundY=terrainHeight(car.position.x,car.position.z)+.68;
+let targetY=groundY;
+let targetNormal=terrainNormal(car.position.x,car.position.z);
+
+if(ramp&&!airborne){
+const r=ramp.r;
+const rampY=terrainHeight(r.x,r.z)+r.rise*ramp.progress;
+if(ramp.progress>.05&&ramp.progress<.98){
+targetY=rampY+.62;
+targetNormal.set(0,1,0);
+targetNormal.applyAxisAngle(new THREE.Vector3(1,0,0),-Math.atan2(r.rise,r.length));
+targetNormal.applyAxisAngle(new THREE.Vector3(0,1,0),r.angle);
+targetNormal.normalize();
+lastSurface='Ramp';
+}
+if(ramp.progress>=.94&&ramp.progress<=1.03&&speed>4){
+verticalVelocity=4.8+Math.min(speed*.12,2.6);
+airborne=true;
+lastSurface='Air';
+}
+}
+
+if(airborne){
+car.position.y+=verticalVelocity*dt;
+verticalVelocity-=12.5*dt;
+if(car.position.y<=groundY&&verticalVelocity<0){
+car.position.y=groundY;
+verticalVelocity=0;
+airborne=false;
+}
+}else{
+car.position.y+=(targetY-car.position.y)*Math.min(1,dt*12);
+}
+
+// Match the truck's up direction to the ground normal.
+// This makes the truck pitch on hills and roll across side slopes.
+desiredUp.copy(airborne?worldUp:targetNormal);
+upSmooth.lerp(desiredUp,Math.min(1,dt*(airborne?1.8:7.5))).normalize();
+
+tempForward.set(-Math.sin(heading),0,-Math.cos(heading));
+tempForward.addScaledVector(upSmooth,-tempForward.dot(upSmooth)).normalize();
+if(tempForward.lengthSq()<.001)tempForward.set(0,0,-1);
+tempRight.crossVectors(tempForward,upSmooth).normalize();
+basis.makeBasis(tempRight,upSmooth,tempForward.clone().negate());
+targetQuaternion.setFromRotationMatrix(basis);
+car.quaternion.slerp(targetQuaternion,Math.min(1,dt*(airborne?2.2:8)));
+
+// Small suspension motion and wheel spin
+bodyPivot.position.y=airborne?0:Math.sin(clock.elapsedTime*9+car.position.x*.3)*.035;
+wheelSpin+=speed*dt/.55;
+wheels.forEach(w=>w.rotation.x=wheelSpin);
+
+// Third-person camera
+const camBack=new THREE.Vector3(Math.sin(heading)*10,5.6,Math.cos(heading)*10);
+const camTarget=new THREE.Vector3(car.position.x,car.position.y+1.1,car.position.z);
+camera.position.lerp(camTarget.clone().add(camBack),Math.min(1,dt*3.2));
+camera.lookAt(camTarget);
+
+document.getElementById('speed').textContent=Math.round(Math.abs(speed)*5);
+document.getElementById('surface').textContent=airborne?'Air':lastSurface;
+document.getElementById('air').textContent=airborne?'Yes':'No';
+renderer.render(scene,camera);
+}
+
+animate();
+
+addEventListener('resize',()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+})();
+</script>
+</body>
+</html>
+```
